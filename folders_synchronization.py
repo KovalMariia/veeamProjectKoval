@@ -11,36 +11,34 @@ def sync_folders(source, replica):
     """
     Synchronize two folders including subfolders
     """
-    try:
-        comparison = dircmp(source, replica)
 
-        # Copy files from source to replica and overwrite if already exist
-        for file in comparison.left_only + comparison.diff_files:
-            src_path = os.path.join(source, file)
-            rpl_path = os.path.join(replica, file)
+    comparison = dircmp(source, replica)
 
-            if os.path.isdir(src_path):
-                shutil.copytree(src_path, rpl_path)  # Copy entire directory tree
-                logging.info(f"Copied directory from {src_path} to {rpl_path}")
-            else:
-                shutil.copy2(src_path, rpl_path)  # Copy files and preserve metadata
-                logging.info(f"Copied file from {src_path} to {rpl_path}")
+    # Copy files from source to replica and overwrite if already exist
+    for file in comparison.left_only + comparison.diff_files:
+        src_path = os.path.join(source, file)
+        rpl_path = os.path.join(replica, file)
 
-        # Recursively sync subdirectories
-        for sub_dir in comparison.common_dirs:
-            sync_folders(os.path.join(source, sub_dir), os.path.join(replica, sub_dir))
+        if os.path.isdir(src_path):
+            shutil.copytree(src_path, rpl_path)  # Copy entire directory tree
+            logging.info(f"Copied directory from {src_path} to {rpl_path}")
+        else:
+            shutil.copy2(src_path, rpl_path)  # Copy files and preserve metadata
+            logging.info(f"Copied file from {src_path} to {rpl_path}")
 
-        # Remove files and folders not present in source
-        for file in comparison.right_only:
-            rpl_path = os.path.join(replica, file)
-            if os.path.isdir(rpl_path):
-                shutil.rmtree(rpl_path)  # Remove directory tree
-                logging.info(f"Removed directory {rpl_path}")
-            else:
-                os.remove(rpl_path)  # Remove file
-                logging.info(f"Removed file {rpl_path}")
-    except Exception as e:
-        logging.error(f"Error synchronizing {src_path} to {rpl_path}: {str(e)}")
+    # Recursively sync subdirectories
+    for sub_dir in comparison.common_dirs:
+        sync_folders(os.path.join(source, sub_dir), os.path.join(replica, sub_dir))
+
+    # Remove files and folders not present in source
+    for file in comparison.right_only:
+        rpl_path = os.path.join(replica, file)
+        if os.path.isdir(rpl_path):
+            shutil.rmtree(rpl_path)  # Remove directory tree
+            logging.info(f"Removed directory {rpl_path}")
+        else:
+            os.remove(rpl_path)  # Remove file
+            logging.info(f"Removed file {rpl_path}")
 
 
 def main(source, replica, interval, log_path):
@@ -55,7 +53,24 @@ def main(source, replica, interval, log_path):
 
     # Initial synchronization and scheduling periodic sync
     logging.info("Starting initial synchronization.")
-    schedule.every(interval).seconds.do(sync_folders, source, replica)  #Default interval is 3600 secs
+
+    try:
+        schedule.every(interval).seconds.do(sync_folders, source, replica)  #Default interval is 3600 secs
+
+        # Check that source and replica folders exist
+        if not os.path.exists(source):
+            raise FileNotFoundError(f"The source directory {source} does not exist.")
+        if not os.path.exists(replica):
+            raise FileNotFoundError(f"The replica directory {replica} does not exist.")
+
+        # Check that source and replica folders differ
+        if source == replica:
+            logging.error(f"The folder {source} is identical to {replica}")
+            exit()
+
+    except Exception as e:
+        logging.error(f"Error synchronizing {source} to {replica}: {str(e)}")
+        exit()
 
     while True:
         schedule.run_pending()
